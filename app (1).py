@@ -1,54 +1,51 @@
 import streamlit as st
 import pickle
+import nltk
 import re
+import string
+import os
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.linear_model import LogisticRegression
 
-# Function to clean text (should be the same as used during training)
+nltk.download('punkt', quiet=True)
+nltk.download('stopwords', quiet=True)
+nltk.download('wordnet', quiet=True)
+
+# Load model and vectorizer
+# Ensure these files exist from the previous training step
+if os.path.exists('model.pkl') and os.path.exists('vectorizer.pkl'):
+    model = pickle.load(open('model.pkl', 'rb'))
+    vectorizer = pickle.load(open('vectorizer.pkl', 'rb'))
+else:
+    st.error("Model or Vectorizer files not found. Please ensure they are trained and saved.")
+    st.stop() # Stop the app if files are missing
+
+# Text cleaning function (as defined previously)
 def clean_text(text):
-    text = re.sub(r'<.*?>', '', text)  # Remove HTML tags
-    text = re.sub(r'https?://\S+|www\.\S+', '', text)  # Remove URLs
-    text = re.sub(r'\d+', '', text)  # Remove numbers
-    text = re.sub(r'\s+', ' ', text).strip()  # Remove extra spaces
+    text = text.lower()
+    text = re.sub(r'http\S+|www\S+|https\S+', '', text) # Changed to raw string for \S+
+    text = re.sub(r'\d+', '', text) # Changed to raw string for \d+
+    text = text.translate(str.maketrans('', '', string.punctuation))
     return text
 
-# Load the saved model, vectorizer, and label encoder
-try:
-    with open('model.pkl', 'rb') as model_file:
-        model = pickle.load(model_file)
-    with open('tfidf_vectorizer.pkl', 'rb') as vectorizer_file:
-        vectorizer = pickle.load(vectorizer_file)
-    with open('label_encoder.pkl', 'rb') as label_encoder_file:
-        label_encoder = pickle.load(label_encoder_file)
-    st.success("Models, vectorizer, and label encoder loaded successfully!")
-except FileNotFoundError:
-    st.error("Error: One or more necessary files (model, vectorizer, or label encoder) not found. Please ensure they are saved in the current directory.")
-    st.stop()
-except Exception as e:
-    st.error(f"An error occurred while loading files: {e}")
-    st.stop()
+# Streamlit UI
+st.title("IMDB Sentiment Analysis")
 
-# Streamlit app layout
-st.title("IMDB Movie Review Sentiment Analysis")
-st.write("Enter a movie review below to predict its sentiment (positive/negative).")
+review = st.text_area("Enter Movie Review")
 
-user_input = st.text_area("Enter your movie review here:", "")
+if st.button("Predict"):
+    if review:
+        processed_review = clean_text(review)
+        # Ensure the vectorizer has been fitted with vocabulary before transforming
+        if hasattr(vectorizer, 'vocabulary_') and vectorizer.vocabulary_:
+            review_vector = vectorizer.transform([processed_review])
+            prediction = model.predict(review_vector)
 
-if st.button("Analyze Sentiment"):
-    if user_input:
-        # Preprocess the input text
-        cleaned_input = clean_text(user_input.lower())
-        # Vectorize the cleaned text
-        vectorized_input = vectorizer.transform([cleaned_input])
-
-        # Make prediction
-        prediction_numeric = model.predict(vectorized_input)
-        # Convert numerical prediction back to original label
-        predicted_sentiment = label_encoder.inverse_transform(prediction_numeric)[0]
-
-        st.write(f"**Predicted Sentiment:** {predicted_sentiment.capitalize()}")
-
-        if predicted_sentiment == 'positive':
-            st.balloons()
+            if prediction[0] == 1:
+                st.success("Positive Review 😊")
+            else:
+                st.error("Negative Review 😔")
         else:
-            st.snow()
+            st.warning("Vectorizer has no vocabulary. Please ensure it was fitted with data.")
     else:
-        st.warning("Please enter some text to analyze.")
+        st.warning("Please enter a review to predict.")
